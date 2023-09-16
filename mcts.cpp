@@ -1,7 +1,7 @@
 #include "mcts.h"
 #include "PolicyValue.h"
 using namespace std;
-// mctsplayer ì˜ copyë¥¼ ìƒì„±í•  ê²½ìš° ì†Œë©¸ ê³¼ì •ì—ì„œ ì—ëŸ¬ê°€ ë°œìƒí•  ìˆ˜ ìˆìŒ. ì½”ë“œì—ì„œ copyê°€ ìƒì„±ë˜ì§€ ì•Šë„ë¡ í•  ê²ƒ
+// mctsplayer ÀÇ copy¸¦ »ı¼ºÇÒ °æ¿ì ¼Ò¸ê °úÁ¤¿¡¼­ ¿¡·¯°¡ ¹ß»ıÇÒ ¼ö ÀÖÀ½. ÄÚµå¿¡¼­ copy°¡ »ı¼ºµÇÁö ¾Êµµ·Ï ÇÒ °Í
 
 //void softmax(array<float, totSize + 1>& x) {
 //	float max = 0.0f;
@@ -24,7 +24,7 @@ using namespace std;
 MCTS_node::MCTS_node(MCTS_node* parent, float prior_p): _P(prior_p), parent(parent),
 _n_visits(0), _Q(0.0f), _U(0.0f){}
 
-//MCTS_node::~MCTS_node() // ì½ê¸° ì—‘ì„¸ìŠ¤ ìœ„ë°˜ì…ë‹ˆë‹¤.(ì´ë¯¸ delete ëœ ê±¸ delete í•˜ë ¤ í•œ ê±¸ë¡œ ì¶”ì •)
+//MCTS_node::~MCTS_node() // ÀĞ±â ¿¢¼¼½º À§¹İÀÔ´Ï´Ù.(ÀÌ¹Ì delete µÈ °É delete ÇÏ·Á ÇÑ °É·Î ÃßÁ¤)
 //{
 //	for (int i = 0; i <= totSize; ++i)
 //		delete children[i];
@@ -104,7 +104,7 @@ int MCTS_node::select(float c_puct)
 
 bool MCTS_node::is_leaf() const
 {
-	return leaf; // this ê°€ nullptr ì˜€ë‹¤?
+	return leaf; // this °¡ nullptr ¿´´Ù?
 }
 
 bool MCTS_node::is_root() const
@@ -203,7 +203,7 @@ array<float, totSize + 1> MCTS::get_move_probs(const GameManager& game_manager, 
 			ret[i] /= sum;
 	}
 
-	// ë…¼ë¬¸ì—ì„œ í‰ê°€ëŒ€êµ­ ì‹œ temp -> 0 ê³„ì‚° ì‹œ ë°œì‚°í•˜ë¯€ë¡œ visit count ê°€ ê°€ì¥ ë†’ì€ ë…¸ë“œ ì„ íƒ
+	// ³í¹®¿¡¼­ Æò°¡´ë±¹ ½Ã temp -> 0 °è»ê ½Ã ¹ß»êÇÏ¹Ç·Î visit count °¡ °¡Àå ³ôÀº ³ëµå ¼±ÅÃ
 	else {
 		int max = 0, cnt = 0;
 		int ind = 0;
@@ -333,3 +333,11 @@ float MCTSPlayer::get_random() {
 	uniform_real_distribution<float> dis(0.0f, 1.0f);
 	return dis(e);
 }
+
+
+
+
+
+
+
+
