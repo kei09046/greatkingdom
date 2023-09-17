@@ -25,6 +25,7 @@ public:
 	int make_move(int z, bool train_ai);
 	void calc(int where, bool train_ai);
 	void switch_turn();
+	void display_board();
 	const std::vector<int>& get_available() const;
 	const std::pair<int, int>& get_territory() const;
 	const std::vector<std::pair<int, int> >& get_seqence() const;

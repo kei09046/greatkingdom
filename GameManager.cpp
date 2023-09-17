@@ -355,6 +355,32 @@ void GameManager::switch_turn() {
 	return;
 }
 
+void GameManager::display_board() {
+	for (int i = 1; i <= boardSize; ++i) {
+		for (int j = 1; j <= boardSize; ++j) {
+			switch (board[i][j]) {
+			case 0:
+				cout << '-';
+				break;
+			case -1:
+				cout << 'o';
+				break;
+			case 1:
+				cout << 'x';
+				break;
+			default:
+				cout << '+';
+				break;
+			}
+		}
+		cout << endl;
+	}
+
+	cout << endl;
+	cout << endl;
+	return;
+}
+
 void GameManager::modify(int n, int m)
 {
 	int eqv = this->eq_list[n];

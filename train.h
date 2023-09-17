@@ -1,24 +1,13 @@
 #pragma once
 #include <string>
-#include "PolicyValue.h"
+#include "memory.h"
 #include "mcts.h"
+#include "PolicyValue.h"
 #include <deque>
 #include <utility>
 #include <string>
 #include <random>
 #include <algorithm>
-
-class GameData {
-public:
-	std::array<float, 5 * largeSize> state;
-	std::array<float, totSize + 1> mcts_probs;
-	float winner;
-
-	GameData(std::array<float, 5 * largeSize>& _state,
-		std::array<float, totSize + 1>& _mcts_probs, float _winner);
-	GameData(std::array<float, 5 * largeSize>&& _state,
-		std::array<float, totSize + 1>&& _mcts_probs, float _winner);
-};
 
 class TrainPipeline {
 private:
@@ -27,8 +16,8 @@ private:
 	const int play_batch_size = 1;
 	const int epochs = 10;
 	const int check_freq = 100;
-	const int save_freq = 10;
-	const int game_batch_num = 1500;
+	const int save_freq = 50;
+	const int game_batch_num = 15000;
 	float learning_rate = 0.002f;
 	float lr_multiplier = 1.0f;
 	float temp = 1.0f;
@@ -50,6 +39,7 @@ public:
 	static std::pair<float, std::vector<GameData> > start_self_play(MCTSPlayer* player, bool is_shown = false, float temp = 0.1f);
 	static float start_play(std::array<MCTSPlayer*, 2> player_list,
 		bool is_shown = false, float temp = 0.1f);
+	static void play(const std::string& model, bool color, int playout, float temp, bool gpu, bool shown);
 
 	TrainPipeline(const std::string& init_model,
 		const std::string& test_model, bool gpu = false, int cnt = 0);

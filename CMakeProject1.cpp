@@ -2,13 +2,15 @@
 
 #include "CMakeProject1.h"
 #include "PolicyValue.h"
+#include "train.h"
 using namespace std;
 
 int main() {
-	TrainPipeline* training_pipeline = new TrainPipeline("model3b20.pt", "", true, 21);
-	//training_pipeline->policy_evaluate("single", true, 30);
+	TrainPipeline* training_pipeline = new TrainPipeline("model3b2300.pt", "model3b2300.pt", true, 2401);
 	training_pipeline->run();
 	delete training_pipeline;
+
+	/*TrainPipeline::play("model3b2300.pt", false, 2000, 0.1f, true, true);*/
 		
 	/*GameManager g = GameManager();
 	int x, y, v;

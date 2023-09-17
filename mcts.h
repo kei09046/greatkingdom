@@ -37,13 +37,13 @@ private:
 	const float _c_puct;
 	const int _n_playout;
 	MCTS_node* root;
-
+	
 public:
 	MCTS(PolicyValueNet* net, float c_puct = 5.0f, int n_playout = 10000);
 	~MCTS();
 	void delete_tree(MCTS_node* base);
 	void _playout(GameManager game_manager);
-	std::array<float, totSize + 1> get_move_probs(const GameManager& game_manager, float temp=0.1, bool is_shown=false);
+	std::array<float, totSize + 1> get_move_probs(const GameManager& game_manager, float temp=0.1f, bool is_shown=false);
 	void update_with_move(int last_move);
 };
 

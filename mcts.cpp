@@ -24,7 +24,7 @@ using namespace std;
 MCTS_node::MCTS_node(MCTS_node* parent, float prior_p): _P(prior_p), parent(parent),
 _n_visits(0), _Q(0.0f), _U(0.0f){}
 
-//MCTS_node::~MCTS_node() // 읽기 엑세스 위반입니다.(이미 delete 된 걸 delete 하려 한 걸로 추정)
+//MCTS_node::~MCTS_node() // 읽기 엑세스 위반입니다.(이미 delete 된 걸 delete 하려 한 걸로 추정) -> delete tree로 대체
 //{
 //	for (int i = 0; i <= totSize; ++i)
 //		delete children[i];
@@ -232,11 +232,11 @@ void MCTS::update_with_move(int last_move)
 		root = root->children[last_move];
 		root->parent = nullptr;
 		temp->children[last_move] = nullptr;
-		delete temp;
+		delete_tree(temp);
 	}
 
 	else {
-		delete root;
+		delete_tree(root);
 		root = new MCTS_node(nullptr, 1.0f);
 	}
 	/*cout << "update with move" << endl;*/

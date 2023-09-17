@@ -1,16 +1,16 @@
 #include "PolicyValue.h"
-#include "mcts.h"
 #include "train.h"
+#include "mcts.h"
+#include <string>
+#include <deque>
+#include <utility>
+#include <string>
+#include <random>
+#include <algorithm>
+#include "memory.h"
+#include "mcts.h"
+#include "PolicyValue.h"
 using namespace std;
-
-
-GameData::GameData(array<float, 5 * largeSize>& _state,
-	array<float, totSize + 1>& _mcts_probs, float _winner): 
-	state(_state), mcts_probs(_mcts_probs), winner(_winner) {}
-
-GameData::GameData(array<float, 5 * largeSize>&& _state,
-	array<float, totSize + 1>&& _mcts_probs, float _winner):
-	state(_state), mcts_probs(_mcts_probs), winner(_winner) {}
 
 
 pair<float, vector<GameData> > TrainPipeline::start_self_play(MCTSPlayer* player, bool is_shown, float temp){
@@ -110,6 +110,33 @@ float TrainPipeline::start_play(array<MCTSPlayer*, 2> player_list, bool is_shown
 	}
 }
 
+void TrainPipeline::play(const string& model, bool color, int playout, float temp, bool gpu, bool shown) {
+	GameManager game_manager = GameManager();
+	PolicyValueNet* pv = new PolicyValueNet(model, gpu);
+	MCTSPlayer player = MCTSPlayer(pv, 5, playout, false);
+	pair<int, int> cord;
+	int inp, res;
+
+	while (true) {
+		if (color) {
+			cin >> cord.first >> cord.second;
+		}
+		else {
+			player.get_action(game_manager, inp, shown, temp);
+			cord.first = inp / boardSize;
+			cord.second = inp % boardSize;
+		}
+		color = !color;
+		res = game_manager.make_move(cord.first, cord.second, true);
+		game_manager.switch_turn();
+		game_manager.display_board();
+		if (res) {
+			break;
+		}
+	}
+	return;
+}
+
 TrainPipeline::TrainPipeline(const std::string& init_model,
 	const std::string& test_model, bool gpu, int cnt): policy_value_net(init_model, gpu),
 prev_policy(test_model, gpu), mcts_player(&policy_value_net, c_puct, n_playout, true), cnt(cnt){
@@ -140,7 +167,7 @@ void TrainPipeline::get_equi_data(int s, int e)
 				temp_mcts_probs[dnt++] = gd.mcts_probs[l * boardSize + k];
 
 		temp_mcts_probs[totSize] = gd.mcts_probs[totSize];
-		data_buffer.emplace_back(std::move(temp_state), std::move(temp_mcts_probs), gd.winner);
+		data_buffer.emplace_back(move(temp_state), move(temp_mcts_probs), gd.winner);
 
 
 		cnt = 0;
@@ -155,7 +182,7 @@ void TrainPipeline::get_equi_data(int s, int e)
 				temp_mcts_probs[dnt++] = gd.mcts_probs[(k + 1) * boardSize - (l + 1)];
 
 		temp_mcts_probs[totSize] = gd.mcts_probs[totSize];
-		data_buffer.emplace_back(std::move(temp_state), std::move(temp_mcts_probs), gd.winner);
+		data_buffer.emplace_back(move(temp_state), move(temp_mcts_probs), gd.winner);
 
 
 		cnt = 0;
@@ -170,7 +197,7 @@ void TrainPipeline::get_equi_data(int s, int e)
 				temp_mcts_probs[dnt++] = gd.mcts_probs[(l + 1) * boardSize - (k + 1)];
 
 		temp_mcts_probs[totSize] = gd.mcts_probs[totSize];
-		data_buffer.emplace_back(std::move(temp_state), std::move(temp_mcts_probs), gd.winner);
+		data_buffer.emplace_back(move(temp_state), move(temp_mcts_probs), gd.winner);
 
 
 		cnt = 0;
@@ -185,7 +212,7 @@ void TrainPipeline::get_equi_data(int s, int e)
 				temp_mcts_probs[dnt++] = gd.mcts_probs[(boardSize - 1 - k) * boardSize + l];
 
 		temp_mcts_probs[totSize] = gd.mcts_probs[totSize];
-		data_buffer.emplace_back(std::move(temp_state), std::move(temp_mcts_probs), gd.winner);
+		data_buffer.emplace_back(move(temp_state), move(temp_mcts_probs), gd.winner);
 
 
 		cnt = 0;
@@ -200,7 +227,7 @@ void TrainPipeline::get_equi_data(int s, int e)
 				temp_mcts_probs[dnt++] = gd.mcts_probs[(boardSize - 1 - l) * boardSize + k];
 
 		temp_mcts_probs[totSize] = gd.mcts_probs[totSize];
-		data_buffer.emplace_back(std::move(temp_state), std::move(temp_mcts_probs), gd.winner);
+		data_buffer.emplace_back(move(temp_state), move(temp_mcts_probs), gd.winner);
 
 
 		cnt = 0;
@@ -215,7 +242,7 @@ void TrainPipeline::get_equi_data(int s, int e)
 				temp_mcts_probs[dnt++] = gd.mcts_probs[(boardSize - k) * boardSize - (l + 1)];
 
 		temp_mcts_probs[totSize] = gd.mcts_probs[totSize];
-		data_buffer.emplace_back(std::move(temp_state), std::move(temp_mcts_probs), gd.winner);
+		data_buffer.emplace_back(move(temp_state), move(temp_mcts_probs), gd.winner);
 
 
 		cnt = 0;
@@ -230,7 +257,7 @@ void TrainPipeline::get_equi_data(int s, int e)
 				temp_mcts_probs[dnt++] = gd.mcts_probs[(boardSize - l) * boardSize - (k + 1)];
 
 		temp_mcts_probs[totSize] = gd.mcts_probs[totSize];
-		data_buffer.emplace_back(std::move(temp_state), std::move(temp_mcts_probs), gd.winner);
+		data_buffer.emplace_back(move(temp_state), move(temp_mcts_probs), gd.winner);
 	}
 
 	int over = data_buffer.size() - buffer_size;
@@ -242,7 +269,7 @@ void TrainPipeline::get_equi_data(int s, int e)
 
 void TrainPipeline::collect_selfplay_data(int n_games)
 {
-	pair<float, vector<GameData>> res;
+	pair<float, vector<GameData> > res;
 	for (int i = 0; i < n_games; ++i) {
 		res = TrainPipeline::start_self_play(&mcts_player, true, temp);
 		cout << "episode length : " << res.second.size() << " winner : " << res.first << endl;
@@ -294,8 +321,8 @@ void TrainPipeline::policy_update()
 		//cout << winner_batch[i] << endl;
 	}
 
-	auto old_probs_value = new pair<array<float, batchSize* (totSize + 1)>, array<float, batchSize>>(policy_value_net.policy_value(state_batch));
-	auto new_probs_value = new pair<array<float, batchSize* (totSize + 1)>, array<float, batchSize>>();
+	auto old_probs_value = new pair<array<float, batchSize* (totSize + 1)>, array<float, batchSize> >(policy_value_net.policy_value(state_batch));
+	auto new_probs_value = new pair<array<float, batchSize* (totSize + 1)>, array<float, batchSize> >();
 
 	float ov, nv;
 	float kl = 0.0f;
@@ -350,12 +377,14 @@ void TrainPipeline::run()
 
 	for (int i = 0; i < game_batch_num; ++i) {
 		collect_selfplay_data(play_batch_size);
-		if (data_buffer.size() > batchSize)
+		if (data_buffer.size() > batchSize) {
 			policy_update();
+		}
 
 		if (!((i + 1 + cnt) % save_freq)) {
 			model_file = "model3b";
 			model_file += to_string(i + 1 + cnt);
+			cout << "save start" << endl;
 			policy_value_net.save_model(model_file + string(".pt"));
 			cout << "saved" << endl;
 		}
