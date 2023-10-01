@@ -19,7 +19,7 @@ void TrainPipeline::start_self_play(MCTSPlayer* player, bool is_shown, float tem
 	array<float, 7 * largeSize> state[2];
 
 	while (true) {
-		// Ã³À½ ³× ¼ö ·£´ı. 
+		// ì²˜ìŒ ë„¤ ìˆ˜ ëœë¤. 
 		if(cnt < 5) {
 			player->get_random_action(game_manager, move_prob.first, is_shown, temp);
 			result = game_manager.make_move(move_prob.first, true);
@@ -138,7 +138,7 @@ void TrainPipeline::play(const string& model, bool color, int playout, float tem
 		game_manager.switch_turn();
 		game_manager.display_board();
 		if (res) {
-			// °ÔÀÓ Á¾·á È­¸é
+			// ê²Œì„ ì¢…ë£Œ í™”ë©´
 			break;
 		}
 	}
@@ -337,7 +337,7 @@ void TrainPipeline::policy_update()
 		lr_multiplier *= 1.5f;
 
 	old_probs_value->second = policy_value_net.policy_value(state_batch).second;
-	// ÀÌÀü state ¿Í ´ÙÀ½ stateÀÇ Æò°¡´Â ¹İ´ëÀÌ¹Ç·Î -°¡ ¾Æ´Ñ + ÇÊ¿ä
+	// ì´ì „ state ì™€ ë‹¤ìŒ stateì˜ í‰ê°€ëŠ” ë°˜ëŒ€ì´ë¯€ë¡œ -ê°€ ì•„ë‹Œ + í•„ìš”
 	new_probs_value->second = policy_value_net.policy_value(next_state_batch).second;
 	for (int i = 0; i < batchSize; ++i) {
 		if(abs((*winner_batch)[i]) != 1.0f)
@@ -351,7 +351,7 @@ void TrainPipeline::policy_update()
 	return;
 }
 
-// Ãß°¡ °³¼±°¡´ÉÁ¡ : process type¿¡ µû¶ó ¸óÅ×Ä«¸¦·Î Å½»ö¿¡¼­ ¸ÖÆ¼½º·¹µå Àû¿ë
+// ì¶”ê°€ ê°œì„ ê°€ëŠ¥ì  : process typeì— ë”°ë¼ ëª¬í…Œì¹´ë¥¼ë¡œ íƒìƒ‰ì—ì„œ ë©€í‹°ìŠ¤ë ˆë“œ ì ìš©
 float TrainPipeline::policy_evaluate(const std::string& process_type, bool is_shown, int n_games)
 {
 	MCTSPlayer* current_player = new MCTSPlayer(&policy_value_net, c_puct, n_playout, /*is_selfplay=*/false);
@@ -383,7 +383,7 @@ void TrainPipeline::run()
 		}
 
 		if (!((i + 1 + cnt) % save_freq)) {
-			model_file = "model3bv5";
+			model_file = "/content/drive/MyDrive/weights/model3bv5";
 			model_file += to_string(i + 1 + cnt);
 			policy_value_net.save_model(model_file + string(".pt"));
 			cout << "saved" << endl;
