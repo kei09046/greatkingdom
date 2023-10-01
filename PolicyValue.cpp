@@ -5,18 +5,14 @@
 using namespace std;
 
 
-NetImpl::NetImpl(bool use_gpu = false): cv1(torch::nn::Conv2dOptions(5, 32, 3).padding(1).bias(false)),
+NetImpl::NetImpl(bool use_gpu = false): cv1(torch::nn::Conv2dOptions(7, 32, 3).padding(1).bias(false)),
 bn1(torch::nn::BatchNorm2d(32)),
-dp1(torch::nn::Dropout(0.1f)),
 cv2(torch::nn::Conv2dOptions(32, 64, 3).padding(1).bias(false)),
 bn2(torch::nn::BatchNorm2d(64)),
-dp2(torch::nn::Dropout(0.2f)),
 cv3(torch::nn::Conv2dOptions(64, 64, 3).padding(1).bias(false)),
 bn3(torch::nn::BatchNorm2d(64)),
-dp3(torch::nn::Dropout(0.2f)),
 cv4(torch::nn::Conv2dOptions(64, 64, 3).padding(1).bias(false)),
 bn4(torch::nn::BatchNorm2d(64)),
-dp4(torch::nn::Dropout(0.2f)),
 at_cv3(torch::nn::Conv2dOptions(64, 2, 1).padding(0).bias(false)),
 at_bn3(torch::nn::BatchNorm2d(2)),
 at_fc1(torch::nn::Linear(2 * largeSize, totSize + 1)),
@@ -28,16 +24,12 @@ device(use_gpu ? torch::kCUDA : torch::kCPU){
 
 	cv1->to(device);
 	bn1->to(device);
-	dp1->to(device);
 	cv2->to(device);
 	bn2->to(device);
-	dp2->to(device);
 	cv3->to(device);
 	bn3->to(device);
-	dp3->to(device);
 	cv4->to(device);
 	bn4->to(device);
-	dp4->to(device);
 	at_cv3->to(device);
 	at_bn3->to(device);
 	at_fc1->to(device);
@@ -48,16 +40,12 @@ device(use_gpu ? torch::kCUDA : torch::kCPU){
 	
 	register_module("cv1", cv1);
 	register_module("bn1", bn1);
-	register_module("dp1", dp1);
 	register_module("cv2", cv2);
 	register_module("bn2", bn2);
-	register_module("dp2", dp2);
 	register_module("cv3", cv3);
 	register_module("bn3", bn3);
-	register_module("dp3", dp3);
 	register_module("cv4", cv4);
 	register_module("bn4", bn4);
-	register_module("dp4", dp4);
 	register_module("at_cv3", at_cv3);
 	register_module("at_bn3", at_bn3);
 	register_module("at_fc1", at_fc1);
@@ -70,10 +58,10 @@ device(use_gpu ? torch::kCUDA : torch::kCPU){
 std::pair<torch::Tensor, torch::Tensor> NetImpl::forward(const torch::Tensor& state)
 {
 
-	torch::Tensor x = dp1(torch::relu(bn1(cv1(state))));
-	x = dp2(torch::relu(bn2(cv2(x))));
-	x = dp3(torch::relu(bn3(cv3(x))));
-	x = dp4(torch::relu(bn4(cv4(x))));
+	torch::Tensor x = torch::relu(bn1(cv1(state)));
+	x = torch::relu(bn2(cv2(x)));
+	x = torch::relu(bn3(cv3(x)));
+	x = torch::relu(bn4(cv4(x)));
 
 	torch::Tensor act = torch::relu(at_bn3(at_cv3(x)));
 	act = act.view({ -1, 2 * largeSize });
@@ -114,10 +102,10 @@ PolicyValueNet& PolicyValueNet::operator=(const PolicyValueNet& other)
 	return *this;
 }
 
-pair<array<float, batchSize * (totSize + 1)>, array<float, batchSize> > PolicyValueNet::policy_value(array<float, 5 * batchSize * largeSize>* state_batch)
+pair<array<float, batchSize * (totSize + 1)>, array<float, batchSize> > PolicyValueNet::policy_value(array<float, 7 * batchSize * largeSize>* state_batch)
 {
 	auto options = torch::TensorOptions().dtype(torch::kFloat32);
-	torch::Tensor current_state = torch::from_blob((*state_batch).data(), { batchSize, 5, boardSize + 2, boardSize + 2 }, options).to(policy_value_net->device);
+	torch::Tensor current_state = torch::from_blob((*state_batch).data(), { batchSize, 7, boardSize + 2, boardSize + 2 }, options).to(policy_value_net->device);
 	pair<torch::Tensor, torch::Tensor> res;
 
 	if (use_gpu) {
@@ -147,7 +135,7 @@ pair<array<float, totSize + 1>, float> PolicyValueNet::policy_value_fn(const Gam
 {
 	const std::vector<int> available = game_manager.get_available();
 	auto options = torch::TensorOptions().dtype(torch::kFloat32);
-	torch::Tensor current_state = torch::from_blob(game_manager.current_state().data(), { 1, 5, boardSize + 2, boardSize + 2 }, options).to(policy_value_net->device);
+	torch::Tensor current_state = torch::from_blob(game_manager.current_state().data(), { 1, 7, boardSize + 2, boardSize + 2 }, options).to(policy_value_net->device);
 	pair<torch::Tensor, torch::Tensor> res;
 	if (use_gpu) {
 		auto r = policy_value_net->forward(current_state);
@@ -173,11 +161,23 @@ pair<array<float, totSize + 1>, float> PolicyValueNet::policy_value_fn(const Gam
 	return { fr, res.second.index({0, 0}).item<float>() };
 }
 
-void PolicyValueNet::train_step(array<float, batchSize * 5 * largeSize>& state_batch, array<float, batchSize * (totSize + 1)>& mcts_probs,
+float PolicyValueNet::evaluate(array<float, 7 * largeSize> state) {
+	auto options = torch::TensorOptions().dtype(torch::kFloat32);
+	torch::Tensor current_state = torch::from_blob(state.data(), { 1, 7, boardSize + 2, boardSize + 2 }, options).to(policy_value_net->device);
+
+	if (use_gpu) {
+		return policy_value_net->forward(current_state).second.to(torch::kCPU).index({0, 0}).item<float>();
+	}
+	else {
+		return policy_value_net->forward(current_state).second.index({ 0, 0 }).item<float>();
+	}
+}
+
+void PolicyValueNet::train_step(array<float, batchSize * 7 * largeSize>& state_batch, array<float, batchSize * (totSize + 1)>& mcts_probs,
 	array<float, batchSize>& winner_batch, float lr) {
 
 	auto options = torch::TensorOptions().dtype(torch::kFloat32);
-	torch::Tensor sb = torch::from_blob(state_batch.data(), { batchSize, 5, boardSize + 2, boardSize + 2 }, options).to(policy_value_net->device);
+	torch::Tensor sb = torch::from_blob(state_batch.data(), { batchSize, 7, boardSize + 2, boardSize + 2 }, options).to(policy_value_net->device);
 	torch::Tensor mp = torch::from_blob(mcts_probs.data(), { batchSize, totSize + 1 }, options).to(policy_value_net->device);
 	torch::Tensor wb = torch::from_blob(winner_batch.data(), { batchSize }, options).to(policy_value_net->device);
 
@@ -185,42 +185,35 @@ void PolicyValueNet::train_step(array<float, batchSize * 5 * largeSize>& state_b
 	static_cast<torch::optim::AdamOptions&>(optimizer->param_groups()[0].options()).lr(lr);
 	pair<torch::Tensor, torch::Tensor> r = policy_value_net->forward(sb);
 
-	/*int idx = 0;
-	cout << "state batch :" << endl;
-	for (int i = 0; i < batchSize; ++i) {
-		for (int j = 0; j < 5; ++j) {
-			for (int k = 0; k < largeSize; ++k) {
-				cout << state_batch[idx++] << " ";
-			}
-			cout << endl;
-		}
-		cout << endl;
-	}
-	idx = 0;
-	cout << " mcts_probs : " << endl;
-	for (int i = 0; i < batchSize; ++i) {
-		for (int j = 0; j < totSize + 1; ++j) {
-			cout << mcts_probs[idx++] << " ";
-		}
-		cout << endl;
-	}
-	idx = 0;
-	cout << "winner :" << endl;
-	for (int i = 0; i < batchSize; ++i) {
-		cout << winner_batch[i];
-		cout << endl;
-	}*/
+	torch::Tensor value_loss = torch::mse_loss(r.second.view(-1), wb);
+	torch::Tensor policy_loss = -torch::mean(torch::sum(mp * r.first, 1));
+	torch::Tensor loss = value_loss + policy_loss;
+
+	loss.backward();
+	optimizer->step();
+
+	return;
+}
+
+void PolicyValueNet::train_step(array<float, batchSize * 7 * largeSize>& state_batch, array<float, batchSize* (totSize + 1)>& mcts_probs,
+	array<float, batchSize>& winner_batch, array<float, batchSize>& is_weight, float lr) {
+	auto options = torch::TensorOptions().dtype(torch::kFloat32);
+	torch::Tensor sb = torch::from_blob(state_batch.data(), { batchSize, 7, boardSize + 2, boardSize + 2 }, options).to(policy_value_net->device);
+	torch::Tensor mp = torch::from_blob(mcts_probs.data(), { batchSize, totSize + 1 }, options).to(policy_value_net->device);
+	torch::Tensor wb = torch::from_blob(winner_batch.data(), { batchSize }, options).to(policy_value_net->device);
+	torch::Tensor isw = torch::from_blob(is_weight.data(), { batchSize }, options).to(policy_value_net->device);
+
+	optimizer->zero_grad();
+	static_cast<torch::optim::AdamOptions&>(optimizer->param_groups()[0].options()).lr(lr);
+	pair<torch::Tensor, torch::Tensor> r = policy_value_net->forward(sb);
 
 	torch::Tensor value_loss = torch::mse_loss(r.second.view(-1), wb);
 	torch::Tensor policy_loss = -torch::mean(torch::sum(mp * r.first, 1));
 	torch::Tensor loss = value_loss + policy_loss;
+	torch::mul(loss, isw);
+	// value loss 와 policy loss 에 is_weight 가중치 곱해야하는데 어떡해야 할지 모르겠다. 
 	loss.backward();
 	optimizer->step();
-
-	/*torch::Tensor entropy = -torch::mean(torch::sum(torch::exp(r.first) * r.first, 1));
-	cout << "loss : " << loss.data() << endl;
-	cout << "entropy : " << entropy.data() << endl;*/
-	//cout << "train step" << endl;
 	return;
 }
 

@@ -83,25 +83,6 @@ int MCTS_node::select(float c_puct)
 	return loc;
 }
 
-//int MCTS_node::select(float c_puct)
-//{
-//	float val = 10.0f;
-//	float temp;
-//	int loc = 0;
-//
-//	for (int i = 0; i <= totSize; ++i) {
-//		if (children[i] != nullptr) {
-//			temp = children[i]->get_value(c_puct);
-//			if (temp < val) {
-//				val = temp;
-//				loc = i;
-//			}
-//		}
-//	}
-//
-//	return loc;
-//}
-
 bool MCTS_node::is_leaf() const
 {
 	return leaf; // this °¡ nullptr ¿´´Ù?
@@ -243,7 +224,9 @@ void MCTS::update_with_move(int last_move)
 }
 
 MCTSPlayer::MCTSPlayer(PolicyValueNet* net, int c_puct, int n_playout, bool is_selfplay):
-mcts(net, c_puct, n_playout), _is_selfplay(is_selfplay), player(true){}
+mcts(net, c_puct, n_playout), _is_selfplay(is_selfplay), player(true){
+	dirichlet.fill(0.0f);
+}
 
 
 void MCTSPlayer::set_player_ind(bool p)
@@ -257,17 +240,29 @@ void MCTSPlayer::reset_player()
 	mcts.update_with_move(-10);
 }
 
-void MCTSPlayer::get_action(const GameManager& game_manager, int& r, bool shown, float temp)
+float MCTSPlayer::get_action(const GameManager& game_manager, int& r, bool shown, float temp)
 {
-	array<float, totSize + 1> move_probs;
+	array<float, totSize + 1> move_probs = mcts.get_move_probs(game_manager, temp, shown);
 	int move = totSize;
-	float rnd = get_random();
+	float rnd = get_random(0.0f, 1.0f);
 	float cnt = 0.0f;
+	float ret = get_win_prob();
 
 	if (_is_selfplay) {
-		move_probs = mcts.get_move_probs(game_manager, temp, shown);
-		for (int i = 0; i <= totSize; ++i) {
-			cnt += move_probs[i];
+		// get dirichlet distribution
+		int n_legal = game_manager.get_available().size();
+		float sum = 0.0f;
+
+		for (int i = 0; i < n_legal; ++i) {
+			dirichlet[i] = get_gamma();
+			sum += dirichlet[i];
+		}
+		for (int i = 0; i < n_legal; ++i)
+			dirichlet[i] /= sum;
+
+		int dnt = 0;
+		for (int i : game_manager.get_available()) {
+			cnt += move_probs[i] * (1.0f - dir_portion) + dirichlet[dnt++] * dir_portion;
 			if (cnt > rnd) {
 				mcts.update_with_move(i);
 				move = i;
@@ -277,8 +272,7 @@ void MCTSPlayer::get_action(const GameManager& game_manager, int& r, bool shown,
 	}
 
 	else {
-		move_probs = mcts.get_move_probs(game_manager, temp, shown);
-		for (int i = 0; i <= totSize; ++i) {
+		for (int i : game_manager.get_available()) {
 			cnt += move_probs[i];
 			if (cnt > rnd) {
 				mcts.update_with_move(-10);
@@ -289,20 +283,32 @@ void MCTSPlayer::get_action(const GameManager& game_manager, int& r, bool shown,
 	}
 
 	r = move;
-	return;
+	return ret;
 }
 
-void MCTSPlayer::get_action(const GameManager& game_manager, pair<int, array<float, totSize + 1> >& r, bool shown, float temp)
+float MCTSPlayer::get_action(const GameManager& game_manager, pair<int, array<float, totSize + 1> >& r, bool shown, float temp)
 {
-	//r.second = mcts.get_move_probs(game_manager);
 	int move = totSize;
-	float rnd = get_random();
+	float rnd = get_random(0.0f, 1.0f);
 	float cnt = 0.0f;
+	r.second = mcts.get_move_probs(game_manager, temp, shown);
+	float ret = get_win_prob();
 
 	if (_is_selfplay) {
-		r.second = mcts.get_move_probs(game_manager, temp, shown);
-		for (int i = 0; i <= totSize; ++i) {
-			cnt += r.second[i];
+		// get dirichlet distribution
+		int n_legal = game_manager.get_available().size();
+		float sum = 0.0f;
+
+		for (int i = 0; i < n_legal; ++i) {
+			dirichlet[i] = get_gamma();
+			sum += dirichlet[i];
+		}
+		for (int i = 0; i < n_legal; ++i)
+			dirichlet[i] /= sum;
+
+		int dnt = 0;
+		for (int i : game_manager.get_available()) {
+			cnt += r.second[i] * (1.0f - dir_portion) + dirichlet[dnt++] * dir_portion;
 			if (cnt > rnd) {
 				mcts.update_with_move(i);
 				move = i;
@@ -310,10 +316,9 @@ void MCTSPlayer::get_action(const GameManager& game_manager, pair<int, array<flo
 			}
 		}
 	}
-
+	
 	else {
-		r.second = mcts.get_move_probs(game_manager, temp, shown);
-		for (int i = 0; i <= totSize; ++i) {
+		for (int i : game_manager.get_available()) {
 			cnt += r.second[i];
 			if (cnt > rnd) {
 				mcts.update_with_move(-10);
@@ -324,16 +329,24 @@ void MCTSPlayer::get_action(const GameManager& game_manager, pair<int, array<flo
 	}
 
 	r.first = move;
+	return ret;
+}
+
+void MCTSPlayer::get_random_action(const GameManager& game_manager, int& r, bool shown, float temp)
+{
+	mcts.get_move_probs(game_manager, temp, shown);
+	int idx = static_cast<int>(get_random(0.0f, 1.0f) * game_manager.get_available().size());
+	r = game_manager.get_available()[idx];
+	//cout << r << endl;
+	mcts.update_with_move(r);
 	return;
 }
 
-float MCTSPlayer::get_random() {
-	random_device rd;
-	mt19937 e(rd());
-	uniform_real_distribution<float> dis(0.0f, 1.0f);
-	return dis(e);
+float MCTSPlayer::get_win_prob() {
+	if (!mcts.root->_Q)
+		cout << "warning! playout hasn't been performed. return 0.0f";
+	return mcts.root->_Q;
 }
-
 
 
 

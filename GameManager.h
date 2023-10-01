@@ -19,7 +19,7 @@ public:
 	static int convert(int x, int y);
 
 	GameManager();
-	std::array<float, 5 * largeSize> current_state() const;
+	std::array<float, 7 * largeSize> current_state() const;
 	std::pair<int, float> end_game() const;
 	int make_move(int x, int y, bool train_ai);
 	int make_move(int z, bool train_ai);
@@ -30,11 +30,12 @@ public:
 	const std::pair<int, int>& get_territory() const;
 	const std::vector<std::pair<int, int> >& get_seqence() const;
 	int get_turn() const;
+	bool legal(int cord) const;
 
 private:
 	static void remove(std::vector<int>& v, int x);
 	int turn, st_cnt, area_cnt;
-	bool pp = false;
+	int pp = 0;
 	std::pair<int, int> territory;
 	int board[boardSize + 2][boardSize + 2];
 	int st_board[boardSize + 2][boardSize + 2];

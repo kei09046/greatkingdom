@@ -14,7 +14,7 @@ int GameManager::convert(int x, int y) {
 
 GameManager::GameManager() {
 	this->turn = 1;
-	this->pp = false;
+	this->pp = 0;
 	this->territory = { 0, 0 };
 	this->area_cnt = 0;
 	this->st_cnt = 0;
@@ -53,14 +53,15 @@ GameManager::GameManager() {
 
 // python 버전과는 달리 일차원 반환 크기도 다름.(중립돌 + 경계를 별도 레이어로 전환)
 
-array<float, 5 * largeSize> GameManager::current_state() const{
-	array<float, 5 * largeSize> ret;
+array<float, 7 * largeSize> GameManager::current_state() const{
+	array<float, 7 * largeSize> ret;
 	ret.fill(0.0f);
 	
 	int cnt = 0;
+	float c = static_cast<float>((territory.first - territory.second - penalty) * turn);
 	for(int i= 0; i < boardSize + 2; ++i)
 		for (int j = 0; j < boardSize + 2; ++j) {
-			switch (this->turn * this->board[i][j]) {
+			switch (turn * board[i][j]) {
 			case 1:
 				ret[cnt] = 1.0f;
 				break;
@@ -76,7 +77,10 @@ array<float, 5 * largeSize> GameManager::current_state() const{
 			default:
 				break;
 			}
-			ret[4 * largeSize + cnt] = static_cast<float>(this->turn);
+
+			ret[5 * largeSize + cnt] = static_cast<float>(turn * terr_board[i][j]);
+			ret[4 * largeSize + cnt] = static_cast<float>(turn);
+			ret[6 * largeSize + cnt] = c;
 			cnt++;
 		}
 
@@ -105,11 +109,11 @@ int GameManager::make_move(int x, int y, bool train_ai)
 	seq.push_back({ x, y });
 	int z = convert(x, y);
 
-	if (x >= boardSize && this->pp) {
+	if (x >= boardSize && pp == 1) {
 		return -2;
 	}
 	if (x >= boardSize) {
-		this->pp = true;
+		pp++;
 		return 0;
 	}
 
@@ -119,16 +123,17 @@ int GameManager::make_move(int x, int y, bool train_ai)
 
 	x++; y++;
 	//돌이 있는 곳에 착수했는지 체크
-	if (this->st_board[x][y])
+	if (st_board[x][y])
 		return 0;
 	// 상대 영역에 착수했는지 체크
-	if (this->terr_board[x][y] * turn == -1)
+	if (terr_board[x][y] * turn == -1)
 		return -1;
 
-	pp = false;
+	pp = 0;
 
 	//활로 계산, 잡힌 돌 있는지 판단
-	this->board[x][y] = this->turn;
+	board[x][y] = turn;
+	//cout << x << " " << y << endl;
 	set<int> empty_space;
 	int min = Max;
 	int s = 0;
@@ -376,8 +381,7 @@ void GameManager::display_board() {
 		cout << endl;
 	}
 
-	cout << endl;
-	cout << endl;
+	cout << endl << endl;
 	return;
 }
 
@@ -424,4 +428,10 @@ int GameManager::get_turn() const {
 
 const vector<pair<int, int> >& GameManager::get_seqence() const{
 	return this->seq;
+}
+
+bool GameManager::legal(int cord) const {
+	int x = cord / boardSize + 1;
+	int y = cord % boardSize + 1;
+	return (x >= boardSize + 1) || !(board[x][y] || terr_board[x][y]);
 }
