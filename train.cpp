@@ -11,56 +11,15 @@
 using namespace std;
 
 
-//float TrainPipeline::start_play(array<MCTSPlayer*, 2> player_list, bool is_shown, float temp) {
-//	GameManager game_manager = GameManager();
-//	int idx = 0;
-//	int move, res, diff;
-//
-//	while (true) {
-//		player_list[idx]->get_action(game_manager, move, is_shown, temp);
-//		res = game_manager.make_move(move, true);
-//		game_manager.switch_turn();
-//
-//		if (!res) {
-//			idx = 1 - idx;
-//			continue;
-//		}
-//		else {
-//			player_list[0]->reset_player();
-//			player_list[1]->reset_player();
-//		}
-//
-//		if (is_shown) {
-//			auto& seq = game_manager.get_seqence();
-//			for (auto& moves : seq)
-//				cout << moves.first << moves.second << " ";
-//		}
-//
-//		if (res == -2) {
-//			tie(res, diff) = game_manager.end_game();
-//			switch (res) {
-//			case 0:
-//				cout << "draw" << endl;
-//				return 0.5f;
-//			case -1:
-//				cout << "second player wins" << endl;
-//				return 0.0f;
-//			case 1:
-//				cout << "first player wins" << endl;
-//				return 1.0f;
-//			}
-//		}
-//
-//		if ((res == 1 && !idx) || (res == -1 && idx)) {
-//			cout << "first player wins" << endl;
-//			return 1.0f;
-//		}
-//		else {
-//			cout << "second player wins" << endl;
-//			return 0.0f;
-//		}
-//	}
-//}
+pair<float, float> TrainPipeline::surprised(const pair<array<float, totSize + 1>, float> expected, // policy, value
+	const array<float, totSize + 1>& real_policy, const float real_value) {
+	float r1 = 0, r2;
+	r2 = abs(expected.second - real_value);
+	for (int i = 0; i <= totSize; ++i)
+		r1 += (expected.first[i] - real_policy[i]) * (expected.first[i] - real_policy[i]);
+
+	return { sqrt(r1), r2 };
+}
 
 float TrainPipeline::start_play(array<MCTSPlayer*, 2> player_list, ostream& part_res, bool is_shown, float temp) {
 	GameManager game_manager = GameManager();
@@ -157,10 +116,11 @@ float TrainPipeline::policy_evaluate(const std::string& mod_one, const std::stri
 TrainPipeline::TrainPipeline(const std::string& init_model,
 	const std::string& test_model, bool gpu, int cnt) : policy_value_net(init_model, gpu),
 	prev_policy(test_model, gpu), mcts_player(&policy_value_net, c_puct, n_playout, true), save_cnt(cnt) {
-	//next_state_batch = new array<float, 7 * batchSize * largeSize>();
+	next_state_batch = new array<float, 7 * batchSize * largeSize>();
 	state_batch = new array<float, 7 * batchSize * largeSize>();
 	mcts_probs = new array<float, batchSize* (totSize + 1)>();
 	winner_batch = new array<float, batchSize>();
+	is_weight = new array<float, batchSize>();
 }
 
 void TrainPipeline::start_self_play(MCTSPlayer* player, bool is_shown, float temp, int n_games) {
@@ -168,74 +128,57 @@ void TrainPipeline::start_self_play(MCTSPlayer* player, bool is_shown, float tem
 	int cnt = 0, min_pass = -1;
 	pair<int, array<float, totSize + 1>> move_prob;
 	passed.fill(false);
-	//array<float, 7 * largeSize> state[2];
+	array<float, 7 * largeSize> state[2];
+	float t, result;
 
 	while (true) {
-		// 처음 두 수 랜덤. 
+		// 처음 네 수 dirichlet factor 0.5. 
 		cnt++;
-		if (cnt < 3) {
+		if (cnt < 5) {
 			player->get_random_action(game_manager, move_prob.first, is_shown, temp);
-			reward_buffer[cnt] = game_manager.make_move(move_prob.first, true);
+			result = game_manager.make_move(move_prob.first, true);
 			game_manager.switch_turn();
 
-			if (reward_buffer[cnt]) {
+			if (result) {
 				player->reset_player();
 				return;
 			}
 		}
 
 		else {
-			player->get_action(game_manager, move_prob, is_shown, temp);
+			state[0] = game_manager.current_state();
+			t = player->get_action(game_manager, move_prob, is_shown, temp);
+
 			if (move_prob.first == totSize) {
 				passed[cnt] = true;
 				if (min_pass == -1)
 					min_pass = cnt;
 			}
-
-			state_buffer[cnt] = game_manager.current_state();
-			reward_buffer[cnt] = game_manager.make_move(move_prob.first, true);
-			action_buffer[cnt] = move(move_prob.second);
+			result = game_manager.make_move(move_prob.first, true);
 			game_manager.switch_turn();
+			state[1] = game_manager.current_state();
 
-			//state[1] = game_manager.current_state();
-			//if (!result) {
-			//	t = -player->mcts.pv->evaluate(state[1]);
-			//	insert_equi_data(/*abs(player->mcts.pv->evaluate(state[0]) - t),*/ state[0], move_prob.second, 0.0f/*, state[1]*/);
+			if (!result) {
+				//insert_equi_data(abs(player->mcts.pv->policy_value_fn(state[0]) - t), state[0], move_prob.second, t, state[1]);
+				insert_equi_data(TrainPipeline::surprised(player->mcts.pv->policy_value_fn(state[0]), move_prob.second, t), 
+					state[0], move_prob.second, t, state[1]);
+			}
 
-			//	memory.emplace_back(abs(Q - player->mcts.pv->evaluate(state)), move(state), move(move_prob.second), Q, game_manager.current_state());
-			//}
-
-			if (reward_buffer[cnt]) {
-				float result = reward_buffer[cnt];
+			else {
 				if (result == -2)
 					result = -game_manager.end_game().first * game_manager.get_turn();
-
-				float delta = static_cast<float>(result) / cnt;
-				for (int i = cnt; i > 2; --i) {
-					if (i == min_pass || !passed[i]) {
-						insert_equi_data(state_buffer[i], action_buffer[i], result);
-						//result -= delta;
-					}
-					result *= -1.0f;
-					delta *= -1.0f;
-				}
-
-				//insert_equi_data(/*abs(result - player->mcts.pv->evaluate(state[0])),*/ state[0], move_prob.second, static_cast<float>(result)/*, state[1]*/);
-				while (memory.size() > capacity) {
-					memory.pop_front();
-				}
-
-				//memory.emplace_back(abs(result - player->mcts.pv->evaluate(state)), move(state), move(move_prob.second), result, game_manager.current_state());
-
+				//insert_equi_data(abs(result - player->mcts.pv->policy_value_fn(state[0])), state[0], move_prob.second, result, state[1]);
+				insert_equi_data(TrainPipeline::surprised(player->mcts.pv->policy_value_fn(state[0]), move_prob.second, result),
+					state[0], move_prob.second, result, state[1]);
 				player->reset_player();
 
-				if (is_shown) {
+				if (1/*is_shown*/) {
 					cout << endl;
 					for (auto& m : game_manager.get_seqence())
 						cout << m.first << "," << m.second << " ";
 					cout << endl;
 
-					cout << "episode length : " << game_manager.get_seqence().size() << " winner : " << -result << endl;
+					cout << "episode length : " << game_manager.get_seqence().size() << " winner : " << -result * game_manager.get_turn() << endl;
 				}
 
 				return;
@@ -244,16 +187,17 @@ void TrainPipeline::start_self_play(MCTSPlayer* player, bool is_shown, float tem
 	}
 }
 
-void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * largeSize>& _state,
-	std::array<float, totSize + 1>& _mcts_probs, float _winner/*, std::array<float, 7 * largeSize>& _next_state*/) {
+void TrainPipeline::insert_equi_data(pair<float, float> policy_value_delta, std::array<float, 7 * largeSize>& _state,
+	std::array<float, totSize + 1>& _mcts_probs, float _winner, std::array<float, 7 * largeSize>& _next_state) {
 
 	std::array<float, 7 * largeSize> temp_state;
-	//std::array<float, 7 * largeSize> temp_next_state;
+	std::array<float, 7 * largeSize> temp_next_state;
 	std::array<float, totSize + 1> temp_mcts_probs;
 	int cnt, dnt, ind;
 
 	// insert original data
-	memory.emplace_back(/*delta, */_state, _mcts_probs, _winner/*, _next_state*/);
+	policy_memory.emplace_back(policy_value_delta.first, _state, _mcts_probs, _winner, _next_state);
+	value_memory.emplace_back(policy_value_delta.second, _state, _mcts_probs, _winner, _next_state);
 
 	// insert rotated data
 	cnt = 0;
@@ -262,7 +206,7 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 		for (int k = 0; k < boardSize + 2; ++k)
 			for (int l = 0; l < boardSize + 2; ++l) {
 				ind = j * largeSize + l * (boardSize + 2) + k;
-				//temp_next_state[cnt] = _next_state[ind];
+				temp_next_state[cnt] = _next_state[ind];
 				temp_state[cnt++] = _state[ind];
 			}
 
@@ -271,8 +215,8 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 			temp_mcts_probs[dnt++] = _mcts_probs[l * boardSize + k];
 
 	temp_mcts_probs[totSize] = _mcts_probs[totSize];
-	memory.emplace_back(/*delta, */move(temp_state), move(temp_mcts_probs), _winner/*, move(temp_next_state)*/);
-
+	policy_memory.emplace_back(policy_value_delta.first, temp_state, temp_mcts_probs, _winner, temp_next_state);
+	value_memory.emplace_back(policy_value_delta.second, move(temp_state), move(temp_mcts_probs), _winner, move(temp_next_state));
 
 	cnt = 0;
 	dnt = 0;
@@ -280,7 +224,7 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 		for (int k = 0; k < boardSize + 2; ++k)
 			for (int l = 0; l < boardSize + 2; ++l) {
 				ind = j * largeSize + (k + 1) * (boardSize + 2) - (l + 1);
-				//temp_next_state[cnt] = _next_state[ind];
+				temp_next_state[cnt] = _next_state[ind];
 				temp_state[cnt++] = _state[ind];
 			}
 
@@ -289,7 +233,8 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 			temp_mcts_probs[dnt++] = _mcts_probs[(k + 1) * boardSize - (l + 1)];
 
 	temp_mcts_probs[totSize] = _mcts_probs[totSize];
-	memory.emplace_back(/*delta,*/ move(temp_state), move(temp_mcts_probs), _winner/*, move(temp_next_state)*/);
+	policy_memory.emplace_back(policy_value_delta.first, temp_state, temp_mcts_probs, _winner, temp_next_state);
+	value_memory.emplace_back(policy_value_delta.second, move(temp_state), move(temp_mcts_probs), _winner, move(temp_next_state));
 
 
 	cnt = 0;
@@ -298,7 +243,7 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 		for (int k = 0; k < boardSize + 2; ++k)
 			for (int l = 0; l < boardSize + 2; ++l) {
 				ind = j * largeSize + (k + 1) * (boardSize + 2) - (l + 1);
-				//temp_next_state[cnt] = _next_state[ind];
+				temp_next_state[cnt] = _next_state[ind];
 				temp_state[cnt++] = _state[ind];
 			}
 
@@ -307,7 +252,8 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 			temp_mcts_probs[dnt++] = _mcts_probs[(l + 1) * boardSize - (k + 1)];
 
 	temp_mcts_probs[totSize] = _mcts_probs[totSize];
-	memory.emplace_back(/*delta,*/ move(temp_state), move(temp_mcts_probs), _winner/*, move(temp_next_state)*/);
+	policy_memory.emplace_back(policy_value_delta.first, temp_state, temp_mcts_probs, _winner, temp_next_state);
+	value_memory.emplace_back(policy_value_delta.second, move(temp_state), move(temp_mcts_probs), _winner, move(temp_next_state));
 
 
 	cnt = 0;
@@ -316,7 +262,7 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 		for (int k = 0; k < boardSize + 2; ++k)
 			for (int l = 0; l < boardSize + 2; ++l) {
 				ind = j * largeSize + (boardSize + 1 - k) * (boardSize + 2) + l;
-				//temp_next_state[cnt] = _next_state[ind];
+				temp_next_state[cnt] = _next_state[ind];
 				temp_state[cnt++] = _state[ind];
 			}
 
@@ -325,7 +271,8 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 			temp_mcts_probs[dnt++] = _mcts_probs[(boardSize - 1 - k) * boardSize + l];
 
 	temp_mcts_probs[totSize] = _mcts_probs[totSize];
-	memory.emplace_back(/*delta,*/ move(temp_state), move(temp_mcts_probs), _winner/*, move(temp_next_state)*/);
+	policy_memory.emplace_back(policy_value_delta.first, temp_state, temp_mcts_probs, _winner, temp_next_state);
+	value_memory.emplace_back(policy_value_delta.second, move(temp_state), move(temp_mcts_probs), _winner, move(temp_next_state));
 
 
 	cnt = 0;
@@ -334,7 +281,7 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 		for (int k = 0; k < boardSize + 2; ++k)
 			for (int l = 0; l < boardSize + 2; ++l) {
 				ind = j * largeSize + (boardSize + 1 - l) * (boardSize + 2) + k;
-				//temp_next_state[cnt] = _next_state[ind];
+				temp_next_state[cnt] = _next_state[ind];
 				temp_state[cnt++] = _state[ind];
 			}
 
@@ -343,7 +290,8 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 			temp_mcts_probs[dnt++] = _mcts_probs[(boardSize - 1 - l) * boardSize + k];
 
 	temp_mcts_probs[totSize] = _mcts_probs[totSize];
-	memory.emplace_back(/*delta,*/ move(temp_state), move(temp_mcts_probs), _winner/*, move(temp_next_state)*/);
+	policy_memory.emplace_back(policy_value_delta.first, temp_state, temp_mcts_probs, _winner, temp_next_state);
+	value_memory.emplace_back(policy_value_delta.second, move(temp_state), move(temp_mcts_probs), _winner, move(temp_next_state));
 
 
 	cnt = 0;
@@ -352,7 +300,7 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 		for (int k = 0; k < boardSize + 2; ++k)
 			for (int l = 0; l < boardSize + 2; ++l) {
 				ind = j * largeSize + (boardSize + 2 - k) * (boardSize + 2) - (l + 1);
-				//temp_next_state[cnt] = _next_state[ind];
+				temp_next_state[cnt] = _next_state[ind];
 				temp_state[cnt++] = _state[ind];
 			}
 
@@ -361,7 +309,8 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 			temp_mcts_probs[dnt++] = _mcts_probs[(boardSize - k) * boardSize - (l + 1)];
 
 	temp_mcts_probs[totSize] = _mcts_probs[totSize];
-	memory.emplace_back(/*delta,*/ move(temp_state), move(temp_mcts_probs), _winner/*, move(temp_next_state)*/);
+	policy_memory.emplace_back(policy_value_delta.first, temp_state, temp_mcts_probs, _winner, temp_next_state);
+	value_memory.emplace_back(policy_value_delta.second, move(temp_state), move(temp_mcts_probs), _winner, move(temp_next_state));
 
 
 	cnt = 0;
@@ -370,7 +319,7 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 		for (int k = 0; k < boardSize + 2; ++k)
 			for (int l = 0; l < boardSize + 2; ++l) {
 				ind = j * largeSize + (boardSize + 2 - l) * (boardSize + 2) - (k + 1);
-				//temp_next_state[cnt] = _next_state[ind];
+				temp_next_state[cnt] = _next_state[ind];
 				temp_state[cnt++] = _state[ind];
 			}
 
@@ -379,62 +328,79 @@ void TrainPipeline::insert_equi_data(/*float delta,*/ std::array<float, 7 * larg
 			temp_mcts_probs[dnt++] = _mcts_probs[(boardSize - l) * boardSize - (k + 1)];
 
 	temp_mcts_probs[totSize] = _mcts_probs[totSize];
-	memory.emplace_back(/*delta,*/ move(temp_state), move(temp_mcts_probs), _winner/*, move(temp_next_state)*/);
+	policy_memory.emplace_back(policy_value_delta.first, temp_state, temp_mcts_probs, _winner, temp_next_state);
+	value_memory.emplace_back(policy_value_delta.second, move(temp_state), move(temp_mcts_probs), _winner, move(temp_next_state));
 
 	return;
 }
 
-void TrainPipeline::policy_update()
+void TrainPipeline::update()
 {
-	for (int i = 0; i < batchSize; ++i)
-		sample_idxs[i] = static_cast<unsigned int>(get_random(0.0f, 1.0f) * (memory.size() - 1));
-
+	array<PackedData, batchSize> train_data = value_memory.sample();
 	int x = 0, y = 0;
+
 	for (int i = 0; i < batchSize; ++i) {
-		//is_weight[i] = train_data[i].diff;
+		(*is_weight)[i] = train_data[i].diff;
 
 		for (int j = 0; j < 7 * largeSize; ++j) {
-			//(*next_state_batch)[x] = memory[sample_idxs[i]].next_state[j];
-			(*state_batch)[x++] = memory[sample_idxs[i]].state[j];
+			(*next_state_batch)[x] = train_data[i].gd->next_state[j];
+			(*state_batch)[x++] = train_data[i].gd->state[j];
 		}
 		for (int j = 0; j < totSize + 1; ++j)
-			(*mcts_probs)[y++] = memory[sample_idxs[i]].mcts_probs[j];
+			(*mcts_probs)[y++] = train_data[i].gd->mcts_probs[j];
 
-		(*winner_batch)[i] = memory[sample_idxs[i]].winner;
-		//cout << winner_batch[i] << endl;
+		(*winner_batch)[i] = train_data[i].gd->winner;
 	}
 
-	//auto old_probs_value = new pair<array<float, batchSize* (totSize + 1)>, array<float, batchSize> >(policy_value_net.policy_value(state_batch));
-	//auto new_probs_value = new pair<array<float, batchSize* (totSize + 1)>, array<float, batchSize> >();
+	for (int i = 0; i < epochs; ++i) {
+		policy_value_net.train_step(*state_batch, *winner_batch, *is_weight, learning_rate);
+	}
 
-	//float ov, nv;
-	//float kl = 0.0f;
-	//for (int i = 0; i < epochs; ++i) {
-	//	kl = 0.0f;
-	//	policy_value_net.train_step(*state_batch, *mcts_probs, *winner_batch, learning_rate * lr_multiplier);
-	//	*new_probs_value = policy_value_net.policy_value(state_batch);
-	//	for (int j = 0; j < batchSize * (totSize + 1); ++j) {
-	//		ov = old_probs_value->first[j];
-	//		nv = new_probs_value->first[j];
-	//		kl += ov * (log(ov + 0.0001f) - log(nv + 0.0001f));
-	//	}
-	//	kl /= batchSize;
-	//	if (kl > kl_targ * 4) {
-	//		cout << "bad divergence" << endl;
-	//		break;
-	//	}
-	//}
+	auto old_probs_value = policy_value_net.policy_value(state_batch).second;
+	// 이전 state 와 다음 state의 평가는 반대이므로 -가 아닌 + 필요
+	//auto new_probs_value = policy_value_net.policy_value(next_state_batch).second;
 
-	//if (kl > kl_targ * 2 && lr_multiplier > 0.1f)
-	//	lr_multiplier /= 1.5f;
-	//else if (kl < kl_targ / 2 && lr_multiplier < 10.0f)
-	//	lr_multiplier *= 1.5f;
+	for (int i = 0; i < batchSize; ++i) {
+		//if (abs((*winner_batch)[i]) != 1.0f)
+		//	value_memory.update(train_data[i].idx, abs(old_probs_value[i] + new_probs_value[i]));
+		//else
+		//	value_memory.update(train_data[i].idx, abs(old_probs_value[i] - (*winner_batch)[i]));
+		value_memory.update(train_data[i].idx, abs(old_probs_value[i] - (*winner_batch)[i]));
+	}
 
-	//delete old_probs_value;
-	//delete new_probs_value;
+
+	train_data = policy_memory.sample();
+	x = 0, y = 0;
+
+	for (int i = 0; i < batchSize; ++i) {
+		(*is_weight)[i] = train_data[i].diff;
+
+		for (int j = 0; j < 7 * largeSize; ++j) {
+			(*next_state_batch)[x] = train_data[i].gd->next_state[j];
+			(*state_batch)[x++] = train_data[i].gd->state[j];
+		}
+		for (int j = 0; j < totSize + 1; ++j)
+			(*mcts_probs)[y++] = train_data[i].gd->mcts_probs[j];
+	}
 
 	for (int i = 0; i < epochs; ++i) {
-		policy_value_net.train_step(*state_batch, *mcts_probs, *winner_batch, learning_rate);
+		policy_value_net.train_step(*state_batch, *winner_batch, *is_weight, learning_rate);
+	}
+
+	auto old_probs_policy = policy_value_net.policy_value(state_batch).first;
+	// 이전 state 와 다음 state의 평가는 반대이므로 -가 아닌 + 필요
+	//auto new_probs_policy = policy_value_net.policy_value(next_state_batch).first;
+
+	int cnt = 0;
+	for (int i = 0; i < batchSize; ++i) {
+		float temp = 0;
+		for (int j = 0; j <= totSize; ++j) {
+			//temp += (old_probs_policy[cnt] - new_probs_policy[cnt]) * (old_probs_policy[cnt] - new_probs_policy[cnt]);
+			temp += (old_probs_policy[cnt] - (*mcts_probs)[cnt]) * (old_probs_policy[cnt] - (*mcts_probs)[cnt]);
+			cnt++;
+		}
+		//policy_memory.update(train_data[i].idx, abs(old_probs_value.second[i] + new_probs_value.second[i]));
+		policy_memory.update(train_data[i].idx, sqrt(temp));
 	}
 	return;
 }
@@ -466,12 +432,12 @@ void TrainPipeline::run(bool is_shown, float temp)
 	for (int i = 0; i < game_batch_num; ++i) {
 		start_self_play(&mcts_player, is_shown, temp, 1);
 
-		if (memory.size() > batchSize) {
-			policy_update();
+		if (policy_memory.sum_tree.n_elements > batchSize) {
+			update();
 		}
 
 		if (!((i + 1 + save_cnt) % save_freq)) {
-			model_file = "model3bv7" + to_string(i + 1 + save_cnt);
+			model_file = "model3bv8" + to_string(i + 1 + save_cnt);
 			policy_value_net.save_model(model_file + string(".pt"));
 			cout << "saved" << endl;
 		}

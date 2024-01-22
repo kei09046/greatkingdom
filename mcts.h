@@ -67,8 +67,8 @@ public:
 	MCTSPlayer(PolicyValueNet* net, int c_puct=5, int n_playout=2000, bool is_selfplay=false);
 	void set_player_ind(bool p);
 	void reset_player();
-	void get_action(const GameManager& game_manager, ostream& stm, int& r, bool shown = false, float temp = 0.1f);
-	void get_action(const GameManager& game_manager, std::array<float, totSize + 1>& r, bool shown = false, float temp = 0.1f);
-	void get_action(const GameManager& game_manager, std::pair<int, std::array<float, totSize + 1> >& r, bool shown = false, float temp = 0.1f);
+	float get_action(const GameManager& game_manager, ostream& stm, int& r, bool shown = false, float temp = 0.1f);
+	//void get_action(const GameManager& game_manager, std::array<float, totSize + 1>& r, bool shown = false, float temp = 0.1f);
+	float get_action(const GameManager& game_manager, std::pair<int, std::array<float, totSize + 1> >& r, bool shown = false, float temp = 0.1f);
 	void get_random_action(const GameManager& game_manager, int& r, bool shown = false, float temp = 0.1f);
 };

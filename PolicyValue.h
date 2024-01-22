@@ -31,7 +31,6 @@ public:
 
 	torch::Device device;
 };
-
 TORCH_MODULE(Net);
 
 class PolicyValueNet {
@@ -48,11 +47,15 @@ public:
 	PolicyValueNet& operator=(const PolicyValueNet& pv);
 	std::pair< std::array<float, batchSize * (totSize + 1)>, std::array<float, batchSize> > policy_value(std::array<float, 7 * batchSize * largeSize>* state_batch);
 	std::pair<std::array<float, totSize + 1>, float> policy_value_fn(const GameManager& game_manager);
-	float evaluate(std::array<float, 7 * largeSize> state);
-	void train_step(std::array<float, 7 * batchSize * largeSize>& state_batch, std::array<float, batchSize * (totSize + 1)>& mcts_probs,
-		std::array<float, batchSize>& winner_batch, float lr);
+	std::pair<std::array<float, totSize + 1>, float> policy_value_fn(std::array<float, 7 * largeSize> state);
+	//void train_step(std::array<float, 7 * batchSize * largeSize>& state_batch, std::array<float, batchSize * (totSize + 1)>& mcts_probs,
+	//	std::array<float, batchSize>& winner_batch, float lr);
 	void train_step(std::array<float, 7 * batchSize * largeSize>& state_batch, std::array<float, batchSize* (totSize + 1)>& mcts_probs,
 		std::array<float, batchSize>& winner_batch, std::array<float, batchSize>& is_weight, float lr);
+	void train_step(std::array<float, 7 * batchSize * largeSize>& state_batch, std::array<float, batchSize* (totSize + 1)>& mcts_probs,
+		std::array<float, batchSize>& is_weight, float lr); // only train policy network
+	void train_step(std::array<float, 7 * batchSize * largeSize>& state_batch, 
+		std::array<float, batchSize>& winner_batch, std::array<float, batchSize>& is_weight, float lr); // only train value network
 	void save_model(const std::string& model_file) const;
 	void load_model(const std::string& model_file);
 };

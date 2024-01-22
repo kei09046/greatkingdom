@@ -148,7 +148,6 @@ pair<array<float, totSize + 1>, float> PolicyValueNet::policy_value_fn(const Gam
 
 	float* pt = get<0>(res).data<float>();
 	int temp = 0;
-	//std::array<float, totSize + 1> pvfn;
 	pvfn.fill(2.0f);
 
 	for (int i : game_manager.get_available()) {
@@ -163,39 +162,75 @@ pair<array<float, totSize + 1>, float> PolicyValueNet::policy_value_fn(const Gam
 	return { pvfn, get<1>(res).index({0, 0}).item<float>() };
 }
 
-float PolicyValueNet::evaluate(array<float, 7 * largeSize> state) {
+pair<array<float, totSize + 1>, float> PolicyValueNet::policy_value_fn(array<float, 7 * largeSize> state) {
 	auto options = torch::TensorOptions().dtype(torch::kFloat32);
 	torch::Tensor current_state = torch::from_blob(state.data(), { 1, 7, boardSize + 2, boardSize + 2 }, options).to(policy_value_net->device);
-
+	tuple<torch::Tensor, torch::Tensor> res;
 	if (use_gpu) {
-		return get<1>(policy_value_net->forward(current_state)).to(torch::kCPU).index({0, 0}).item<float>();
+		auto r = policy_value_net->forward(current_state);
+		get<0>(res) = get<0>(r).to(torch::kCPU);
+		get<1>(res) = get<1>(r).to(torch::kCPU);
 	}
 	else {
-		return get<1>(policy_value_net->forward(current_state)).index({ 0, 0 }).item<float>();
+		res = policy_value_net->forward(current_state);
 	}
+
+	float* pt = get<0>(res).data<float>();
+	int temp = 0;
+	pvfn.fill(2.0f);
+
+	for (int i = 0; i <= totSize; ++i) {
+		pvfn[i] = exp(*pt);
+		pt++;
+	}
+
+	return { pvfn, get<1>(res).index({0, 0}).item<float>() };
 }
 
-void PolicyValueNet::train_step(array<float, batchSize * 7 * largeSize>& state_batch, array<float, batchSize * (totSize + 1)>& mcts_probs,
-	array<float, batchSize>& winner_batch, float lr) {
+//void PolicyValueNet::train_step(array<float, batchSize * 7 * largeSize>& state_batch, array<float, batchSize * (totSize + 1)>& mcts_probs,
+//	array<float, batchSize>& winner_batch, float lr) {
+//
+//	auto options = torch::TensorOptions().dtype(torch::kFloat32);
+//	torch::Tensor sb = torch::from_blob(state_batch.data(), { batchSize, 7, boardSize + 2, boardSize + 2 }, options).to(policy_value_net->device);
+//	torch::Tensor mp = torch::from_blob(mcts_probs.data(), { batchSize, totSize + 1 }, options).to(policy_value_net->device);
+//	torch::Tensor wb = torch::from_blob(winner_batch.data(), { batchSize }, options).to(policy_value_net->device);
+//
+//	optimizer->zero_grad();
+//	static_cast<torch::optim::AdamOptions&>(optimizer->param_groups()[0].options()).lr(lr);
+//
+//	torch::Tensor r1, r2;
+//	tie(r1, r2) = policy_value_net->forward(sb);
+//
+//	//cout << r2.index({0, 0}).item<float>() << " r2" << endl;
+//
+//	torch::Tensor value_loss = torch::nn::functional::mse_loss(r2.view(-1), wb);
+//	torch::Tensor policy_loss = -torch::mean(torch::sum(mp * r1, 1));
+//	torch::Tensor loss = value_loss + policy_loss;
+//
+//	//cout << value_loss.item() << " " << policy_loss.item() << " " << loss.item() << endl;
+//
+//	loss.backward();
+//	optimizer->step();
+//	return;
+//}
+
+void PolicyValueNet::train_step(array<float, batchSize * 7 * largeSize>& state_batch, array<float, batchSize* (totSize + 1)>& mcts_probs,
+	array<float, batchSize>& winner_batch, array<float, batchSize>& is_weight, float lr) {
 
 	auto options = torch::TensorOptions().dtype(torch::kFloat32);
 	torch::Tensor sb = torch::from_blob(state_batch.data(), { batchSize, 7, boardSize + 2, boardSize + 2 }, options).to(policy_value_net->device);
 	torch::Tensor mp = torch::from_blob(mcts_probs.data(), { batchSize, totSize + 1 }, options).to(policy_value_net->device);
 	torch::Tensor wb = torch::from_blob(winner_batch.data(), { batchSize }, options).to(policy_value_net->device);
+	torch::Tensor isw = torch::from_blob(is_weight.data(), { batchSize }, options).to(policy_value_net->device);
 
 	optimizer->zero_grad();
 	static_cast<torch::optim::AdamOptions&>(optimizer->param_groups()[0].options()).lr(lr);
-
 	torch::Tensor r1, r2;
 	tie(r1, r2) = policy_value_net->forward(sb);
 
-	//cout << r2.index({0, 0}).item<float>() << " r2" << endl;
-
-	torch::Tensor value_loss = torch::nn::functional::mse_loss(r2.view(-1), wb);
-	torch::Tensor policy_loss = -torch::mean(torch::sum(mp * r1, 1));
+	torch::Tensor value_loss = torch::mean(torch::mul(isw, pow((r2.view(-1) - wb), 2)));
+	torch::Tensor policy_loss = -torch::mean(torch::mul(isw, torch::sum(mp * r1, 1)));
 	torch::Tensor loss = value_loss + policy_loss;
-
-	//cout << value_loss.item() << " " << policy_loss.item() << " " << loss.item() << endl;
 
 	loss.backward();
 	optimizer->step();
@@ -203,28 +238,41 @@ void PolicyValueNet::train_step(array<float, batchSize * 7 * largeSize>& state_b
 }
 
 void PolicyValueNet::train_step(array<float, batchSize * 7 * largeSize>& state_batch, array<float, batchSize* (totSize + 1)>& mcts_probs,
-	array<float, batchSize>& winner_batch, array<float, batchSize>& is_weight, float lr) {
+	array<float, batchSize>& is_weight, float lr) {
+
 	auto options = torch::TensorOptions().dtype(torch::kFloat32);
 	torch::Tensor sb = torch::from_blob(state_batch.data(), { batchSize, 7, boardSize + 2, boardSize + 2 }, options).to(policy_value_net->device);
 	torch::Tensor mp = torch::from_blob(mcts_probs.data(), { batchSize, totSize + 1 }, options).to(policy_value_net->device);
-	torch::Tensor wb = torch::from_blob(winner_batch.data(), { batchSize }, options).to(policy_value_net->device);
-	/*torch::Tensor isw = torch::from_blob(is_weight.data(), { batchSize }, options).to(policy_value_net->device);*/
+	torch::Tensor isw = torch::from_blob(is_weight.data(), { batchSize }, options).to(policy_value_net->device);
 
 	optimizer->zero_grad();
 	static_cast<torch::optim::AdamOptions&>(optimizer->param_groups()[0].options()).lr(lr);
-	tuple<torch::Tensor, torch::Tensor> r = policy_value_net->forward(sb);
+	torch::Tensor r1, r2;
+	tie(r1, r2) = policy_value_net->forward(sb);
 
-	/*torch::Tensor value_loss = (torch::mul(isw, torch::mse_loss(r.second.view(-1), wb))).mean();
-	torch::Tensor policy_loss = -(torch::mul(isw, torch::sum(mp * r.first, 1))).mean();*/
+	torch::Tensor policy_loss = -torch::mean(torch::mul(isw, torch::sum(mp * r1, 1)));
 
-	torch::Tensor value_loss = torch::nn::functional::mse_loss(get<1>(r).view(-1), wb);
-	torch::Tensor policy_loss = -torch::mean(torch::mul(mp, get<0>(r)), 1);
-	torch::Tensor loss = value_loss + policy_loss;
+	policy_loss.backward();
+	optimizer->step();
+	return;
+}
 
-	//cout << loss.item() << " ";
+void PolicyValueNet::train_step(array<float, batchSize * 7 * largeSize>& state_batch, 
+	array<float, batchSize>& winner_batch, array<float, batchSize>& is_weight, float lr) {
 
-	// value loss 와 policy loss 에 is_weight 가중치 곱해야하는데 이게 맞는지 모르겠다. 
-	loss.backward();
+	auto options = torch::TensorOptions().dtype(torch::kFloat32);
+	torch::Tensor sb = torch::from_blob(state_batch.data(), { batchSize, 7, boardSize + 2, boardSize + 2 }, options).to(policy_value_net->device);
+	torch::Tensor wb = torch::from_blob(winner_batch.data(), { batchSize }, options).to(policy_value_net->device);
+	torch::Tensor isw = torch::from_blob(is_weight.data(), { batchSize }, options).to(policy_value_net->device);
+
+	optimizer->zero_grad();
+	static_cast<torch::optim::AdamOptions&>(optimizer->param_groups()[0].options()).lr(lr);
+	torch::Tensor r1, r2;
+	tie(r1, r2) = policy_value_net->forward(sb);
+
+	torch::Tensor value_loss = torch::mean(torch::mul(isw, pow((r2.view(-1) - wb), 2)));
+
+	value_loss.backward();
 	optimizer->step();
 	return;
 }
