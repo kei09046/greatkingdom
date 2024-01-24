@@ -58,7 +58,9 @@ array<float, 7 * largeSize> GameManager::current_state() const{
 	ret.fill(0.0f);
 	
 	unsigned int cnt = 0;
-	float c = terr_diff();
+	float c = terr_diff() * seq.size()/totSize;
+	c = c / (1 + abs(c));
+
 	for(int i= 0; i < boardSize + 2; ++i)
 		for (int j = 0; j < boardSize + 2; ++j) {
 			switch (turn * board[i][j]) {
@@ -114,6 +116,8 @@ int GameManager::make_move(int x, int y, bool train_ai)
 	seq.push_back({ x, y });
 	int z = convert(x, y);
 
+	if (y < 0) // resign
+		return -1;
 	if (x >= boardSize && pp == 1) {
 		return -2;
 	}
